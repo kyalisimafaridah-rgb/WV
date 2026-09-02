@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>WiFi Voucher — Reliable MikroTik Vouchers</title>
+  <link rel="icon" href="data:," />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#3b82f6" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WiFi Voucher" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- AUTH SCREEN -->
+    <section id="auth-screen" class="screen">
+      <div class="card auth-card">
+        <h1>WiFi Voucher</h1>
+        <p class="subtitle">Reliable remote vouchers for MikroTik owners</p>
+
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="login">Login</button>
+          <button type="button" class="tab" data-tab="signup">Sign up</button>
+        </div>
+
+        <form id="login-form" class="form" autocomplete="on">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" name="email" required placeholder="you@shop.com" autocomplete="username" inputmode="email" />
+          <label for="login-password">Password</label>
+          <div class="password-field">
+            <input type="password" id="login-password" name="password" required minlength="6" autocomplete="current-password" />
+            <button type="button" class="password-toggle" data-toggle-for="login-password">Show</button>
+          </div>
+          <button type="submit" class="btn primary" id="login-submit-btn">Login</button>
+          <button type="button" class="link-btn" id="forgot-password-link">Forgot password?</button>
+        </form>
+
+        <form id="signup-form" class="form hidden" autocomplete="on">
+          <label for="signup-name">Full name</label>
+          <input type="text" id="signup-name" name="name" placeholder="Shop owner name" autocomplete="name" />
+          <label for="signup-email">Email</label>
+          <input type="email" id="signup-email" name="email" required placeholder="you@shop.com" autocomplete="username" inputmode="email" />
+          <label for="signup-password">Password</label>
+          <div class="password-field">
+            <input type="password" id="signup-password" name="password" required minlength="6" autocomplete="new-password" />
+            <button type="button" class="password-toggle" data-toggle-for="signup-password">Show</button>
+          </div>
+          <p class="field-hint">At least 6 characters.</p>
+          <button type="submit" class="btn primary" id="signup-submit-btn">Create account</button>
+          <p class="hint">14-day free trial starts automatically</p>
+        </form>
+
+        <!-- FORGOT PASSWORD -->
+        <form id="forgot-form" class="form hidden" autocomplete="on">
+          <p class="hint" style="margin-top:0">Enter your account email — we'll send a link to reset your password.</p>
+          <label for="forgot-email">Email</label>
+          <input type="email" id="forgot-email" name="email" required placeholder="you@shop.com" autocomplete="username" inputmode="email" />
+          <button type="submit" class="btn primary" id="forgot-submit-btn">Send reset link</button>
+          <button type="button" class="link-btn" id="back-to-login-link">Back to login</button>
+        </form>
+
+        <p id="auth-error" class="error hidden"></p>
+      </div>
+    </section>
+
+    <!-- PASSWORD RECOVERY SCREEN (reached via emailed reset link) -->
+    <section id="recovery-screen" class="screen hidden">
+      <div class="card auth-card">
+        <h1>Set a new password</h1>
+        <p class="subtitle">Choose a new password for your account.</p>
+        <form id="recovery-form" class="form">
+          <label for="recovery-password">New password</label>
+          <div class="password-field">
+            <input type="password" id="recovery-password" name="password" required minlength="6" autocomplete="new-password" />
+            <button type="button" class="password-toggle" data-toggle-for="recovery-password">Show</button>
+          </div>
+          <button type="submit" class="btn primary" id="recovery-submit-btn">Update password</button>
+        </form>
+        <p id="recovery-error" class="error hidden"></p>
+      </div>
+    </section>
+
+    <!-- SUBSCRIPTION EXPIRED SCREEN -->
+    <section id="expired-screen" class="screen hidden">
+      <div class="card state-card">
+        <h1>Your trial has ended</h1>
+        <p id="expired-message">Your 14-day trial has expired. Contact the app owner to activate your subscription and regain access to your routers, profiles, and vouchers.</p>
+        <p class="hint">Your data is safe and will be available again once your subscription is active.</p>
+        <button id="expired-logout-btn" class="btn">Log out</button>
+      </div>
+    </section>
+
+    <!-- SUPER ADMIN SCREEN (only reachable if the logged-in account has role=admin) -->
+    <section id="admin-screen" class="screen hidden">
+      <header class="topbar">
+        <div class="brand">WiFi Voucher — Admin</div>
+        <div class="user-info">
+          <span id="admin-email-display"></span>
+          <button id="switch-to-owner-btn" class="btn small">My Account</button>
+          <button id="admin-logout-btn" class="btn small">Logout</button>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="admin-stats" id="admin-stats-grid">
+          <p class="loading-placeholder">Loading stats…</p>
+        </div>
+
+        <div class="panel-header">
+          <h2>Owners</h2>
+        </div>
+        <div class="card table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Trial ends</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="admin-owners-body">
+              <tr><td colspan="5" class="loading-placeholder">Loading owners…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel-header" style="margin-top: 1.5rem;">
+          <h2>Routers</h2>
+        </div>
+        <div class="card table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Host</th>
+                <th>Owner</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="admin-routers-body">
+              <tr><td colspan="4" class="loading-placeholder">Loading routers…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p id="admin-dash-error" class="error hidden"></p>
+      </main>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="screen hidden">
+      <header class="topbar">
+        <div class="brand">WiFi Voucher</div>
+        <div class="user-info">
+          <span id="owner-email"></span>
+          <span id="sub-badge" class="badge"></span>
+          <button id="admin-panel-btn" class="btn small hidden">Admin Panel</button>
+          <button id="logout-btn" class="btn small">Logout</button>
+        </div>
+      </header>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-panel="routers">Routers</button>
+        <button class="nav-btn" data-panel="profiles">Profiles</button>
+        <button class="nav-btn" data-panel="vouchers">Vouchers</button>
+      </nav>
+
+      <main class="content">
+        <div id="trial-banner"></div>
+
+        <!-- ROUTERS PANEL -->
+        <div id="panel-routers" class="panel">
+          <div class="panel-header">
+            <h2>Routers</h2>
+            <button id="add-router-btn" class="btn primary">+ Add Router</button>
+          </div>
+          <p class="panel-desc">We only save a router after a successful live connection test.</p>
+          <div id="routers-list" class="list"><p class="loading-placeholder">Loading routers…</p></div>
+        </div>
+
+        <!-- PROFILES PANEL -->
+        <div id="panel-profiles" class="panel hidden">
+          <div class="panel-header">
+            <h2>Profiles (Packages)</h2>
+            <button id="add-profile-btn" class="btn primary">+ Add Profile</button>
+          </div>
+          <p class="panel-desc">Time limit, data limit, or both. These become the voucher packages.</p>
+          <p id="profiles-empty-hint" class="hint hidden">Add a router first — profiles belong to a router.</p>
+          <div id="profiles-list" class="list"><p class="loading-placeholder">Loading profiles…</p></div>
+        </div>
+
+        <!-- VOUCHERS PANEL -->
+        <div id="panel-vouchers" class="panel hidden">
+          <div class="panel-header">
+            <h2>Generate Vouchers</h2>
+          </div>
+          <div class="card generate-card">
+            <p id="vouchers-empty-hint" class="hint hidden" style="margin-top:0">Create a profile first — vouchers are generated from a profile.</p>
+            <label for="gen-profile">Profile</label>
+            <select id="gen-profile"></select>
+            <label for="gen-qty">Quantity (max 100)</label>
+            <input type="number" id="gen-qty" value="5" min="1" max="100" inputmode="numeric" />
+            <button id="generate-btn" class="btn primary">Generate on Router</button>
+            <p class="hint">If the router is offline, nothing is saved. We fail loudly on purpose.</p>
+          </div>
+          <div id="gen-result" class="hidden"></div>
+          <div class="panel-header" style="margin-top:1.5rem">
+            <h3>Recent vouchers</h3>
+            <div>
+              <button id="export-txt" class="btn small">Export TXT</button>
+              <button id="export-csv" class="btn small">Export CSV</button>
+              <button id="export-pdf" class="btn small">Print / PDF</button>
+            </div>
+          </div>
+          <div id="vouchers-list" class="list"><p class="loading-placeholder">Loading vouchers…</p></div>
+          <button id="load-more-vouchers" class="btn small hidden" style="margin-top:0.75rem">Show more</button>
+        </div>
+      </main>
+    </section>
+
+    <!-- MODAL: Add Router -->
+    <div id="modal-router" class="modal hidden">
+      <div class="modal-card">
+        <h3>Add Router</h3>
+        <p class="hint">We will test the connection before saving. If your ISP uses CGNAT, port-forwarding may not work — contact support for the phone-home option.</p>
+        <form id="router-form" autocomplete="off">
+          <label for="r-label">Label</label>
+          <input type="text" id="r-label" name="r-label" required placeholder="Shop Router" />
+          <label for="r-host">Host (IP or DDNS)</label>
+          <input type="text" id="r-host" name="r-host" required placeholder="shop.ddns.net or 41.xxx.xxx.xxx" />
+          <label for="r-port">API Port</label>
+          <input type="number" id="r-port" name="r-port" value="8728" inputmode="numeric" />
+          <label for="r-user">API Username</label>
+          <input type="text" id="r-user" name="r-user" required placeholder="api-user" autocomplete="off" />
+          <label for="r-pass">API Password</label>
+          <div class="password-field">
+            <input type="password" id="r-pass" name="r-pass" required autocomplete="new-password" />
+            <button type="button" class="password-toggle" data-toggle-for="r-pass">Show</button>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn" id="test-router-btn">Test Connection</button>
+            <button type="submit" class="btn primary" id="save-router-btn">Save (after test)</button>
+            <button type="button" class="btn" id="cancel-router">Cancel</button>
+          </div>
+        </form>
+        <p id="router-test-result" class="hint"></p>
+      </div>
+    </div>
+
+    <!-- MODAL: Add Profile -->
+    <div id="modal-profile" class="modal hidden">
+      <div class="modal-card">
+        <h3>Add Profile</h3>
+        <form id="profile-form">
+          <label for="p-router">Router</label>
+          <select id="p-router" required></select>
+          <label for="p-name">Name</label>
+          <input type="text" id="p-name" required placeholder="1 Hour" />
+          <label for="p-duration">Duration (minutes) — leave empty for data-only</label>
+          <input type="number" id="p-duration" min="1" placeholder="60" inputmode="numeric" />
+          <label for="p-data">Data limit (MB) — leave empty for time-only</label>
+          <input type="number" id="p-data" min="1" placeholder="500" inputmode="numeric" />
+          <label for="p-price">Price</label>
+          <input type="number" id="p-price" value="0" min="0" step="0.01" inputmode="decimal" />
+          <label for="p-currency">Currency</label>
+          <input type="text" id="p-currency" value="UGX" />
+          <label for="p-prefix">Code prefix (optional)</label>
+          <input type="text" id="p-prefix" placeholder="SHOP-" maxlength="20" />
+          <div class="modal-actions">
+            <button type="submit" class="btn primary" id="save-profile-btn">Create Profile</button>
+            <button type="button" class="btn" id="cancel-profile">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/toast.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
