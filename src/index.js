@@ -20,56 +20,41 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const app = Fastify({
-  logger: {
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  },
-  trustProxy: true,
-});
+if (process.env.NODE_ENV === 'production') {
+  const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'ENCRYPTION_KEY', 'APP_URL', 'BUSINESS_NAME', 'BUSINESS_EMAIL'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
+}
 
-// Security & CORS
+const app = Fastify({ logger: { level: process.env.NODE_ENV === 'production' ? 'info' : 'debug' }, trustProxy: true, bodyLimit: 1024 * 1024 });
+
 await app.register(helmet, {
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      // supabase-js is loaded from jsdelivr; no other inline/external scripts used
-      scriptSrc: ["'self'", 'https://cdn.jsdelivr.net'],
-      // index.html uses inline style="" attributes, so 'unsafe-inline' is needed here
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
-      // API calls + realtime go to the Supabase project itself
-      connectSrc: ["'self'", 'https://brpkuuptddkefosunhul.supabase.co', 'wss://brpkuuptddkefosunhul.supabase.co'],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      frameAncestors: ["'self'"],
-    },
-  },
+  contentSecurityPolicy: { directives: {
+    defaultSrc: ["'self'"], scriptSrc: ["'self'", 'https://cdn.jsdelivr.net'], styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...(process.env.SUPABASE_URL ? [process.env.SUPABASE_URL, process.env.SUPABASE_URL.replace(/^https:/, 'wss:')] : [])],
+    fontSrc: ["'self'"], objectSrc: ["'none'"], baseUri: ["'self'"], frameAncestors: ["'self'"],
+  }},
 });
 await app.register(cors, {
-  origin: true,
-  credentials: true,
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    const allowed = new Set([process.env.APP_URL, process.env.NODE_ENV === 'production' ? null : 'http://localhost:3000', process.env.NODE_ENV === 'production' ? null : 'http://127.0.0.1:3000'].filter(Boolean));
+    cb(null, allowed.has(origin));
+  }, credentials: true,
 });
+await app.register(rateLimit, { max: 100, timeWindow: '1 minute', addHeaders: { 'x-ratelimit-limit': true, 'x-ratelimit-remaining': true, 'x-ratelimit-reset': true } });
 
-// Rate limiting — global baseline, tighter caps on sensitive routes below
-await app.register(rateLimit, {
-  max: 100,
-  timeWindow: '1 minute',
-  addHeaders: {
-    'x-ratelimit-limit': true,
-    'x-ratelimit-remaining': true,
-    'x-ratelimit-reset': true,
-  },
+app.get('/config.js', async (request, reply) => {
+  reply.header('Cache-Control', 'no-store').type('application/javascript').send(
+    `window.SUPABASE_URL=${JSON.stringify(process.env.SUPABASE_URL || '')};\n` +
+    `window.SUPABASE_ANON_KEY=${JSON.stringify(process.env.SUPABASE_ANON_KEY || '')};\n` +
+    `window.BUSINESS_NAME=${JSON.stringify(process.env.BUSINESS_NAME || 'WiFi Voucher')};\n` +
+    `window.BUSINESS_EMAIL=${JSON.stringify(process.env.BUSINESS_EMAIL || '')};\n` +
+    `window.BUSINESS_PHONE=${JSON.stringify(process.env.BUSINESS_PHONE || '')};\n` +
+    `window.BUSINESS_ADDRESS=${JSON.stringify(process.env.BUSINESS_ADDRESS || '')};\n`
+  );
 });
-
-// Health check (important for Render)
-app.get('/health', async () => ({
-  status: 'ok',
-  time: new Date().toISOString(),
-  service: 'wifi-voucher-mvp',
-}));
-
-// API routes FIRST so they are not swallowed by static
+app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'wifi-voucher-mvp' }));
 await app.register(authRoutes);
 await app.register(routerRoutes);
 await app.register(profileRoutes);
@@ -77,41 +62,16 @@ await app.register(voucherRoutes);
 await app.register(adminRoutes);
 await app.register(billingRoutes);
 await app.register(momoWebhookRoutes);
+await app.register(fastifyStatic, { root: join(__dirname, '..', 'public'), prefix: '/', wildcard: false });
 
-// Static frontend (after API routes)
-await app.register(fastifyStatic, {
-  root: join(__dirname, '..', 'public'),
-  prefix: '/',
-  wildcard: false,
-});
-
-// Global error handler — never leak stack traces in production
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
-
-  // Zod validation errors
-  if (error.name === 'ZodError') {
-    return reply.code(400).send({
-      error: 'Validation failed',
-      details: error.errors,
-    });
-  }
-
+  if (error.name === 'ZodError') return reply.code(400).send({ error: 'Validation failed', details: error.errors });
   const status = error.statusCode || 500;
-  reply.code(status).send({
-    error: error.message || 'Internal server error',
-    code: error.code || undefined,
-  });
+  const safeMessage = status >= 500 && process.env.NODE_ENV === 'production' ? 'Internal server error' : (error.message || 'Request failed');
+  reply.code(status).send({ error: safeMessage, code: error.code || undefined });
 });
 
 const port = Number(process.env.PORT) || 3000;
-const host = '0.0.0.0';
-
-try {
-  await app.listen({ port, host });
-  console.log(`✅ WiFi Voucher MVP running on http://${host}:${port}`);
-  console.log(`   Health: http://${host}:${port}/health`);
-} catch (err) {
-  app.log.error(err);
-  process.exit(1);
-}
+try { await app.listen({ port, host: '0.0.0.0' }); console.log(`WiFi Voucher running on port ${port}`); }
+catch (err) { app.log.error(err); process.exit(1); }
